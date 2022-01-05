@@ -17,25 +17,27 @@ library(cleaninginspectoR) #devtools::install_github("impact-initiatives/cleanin
 source("utils/rendering.R")
 source("utils/check_cleaning.R")
 
-raww <- readxl::read_excel("inputs/REACH_UKR2008_Dataset Raw non PII HERAIII_NOV2021.xlsx", guess = 10000)
-cleann <- readxl::read_excel("inputs/REACH_UKR2008_Dataset clean HERAIII_NOV2021.xlsx", guess = 50000)
-logg <- readxl::read_excel("inputs/REACH_UKR2008_Data cleaning log HERAIII_DEC2021.xlsx", guess = 50000,
-                           sheet = "VCL")
-dell <- readxl::read_excel("inputs/REACH_UKR2008_Data cleaning log HERAIII_DEC2021.xlsx", guess = 50000,
-                           sheet = "GCL")
+raww <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
+                           sheet = "Raw Data_HH", skip = 1)
+cleann <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
+                           sheet = "Clean_HH", skip = 1)
+logg <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
+                           sheet = "Cleaning_log")
+dell <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
+                           sheet = "Deletion_log_HH")
 
-questions <- readxl::read_excel("inputs/REACH_UKR2008_Questionnaire HERAIII_NOV2021.xlsx")
-choices <- readxl::read_excel("inputs/REACH_UKR2008_Questionnaire HERAIII_NOV2021.xlsx", sheet = 2)
+questions <- readxl::read_excel("inputs/Formulario.xlsx")
+choices <- readxl::read_excel("inputs/Formulario.xlsx", sheet = 2)
 
-uuid_cleann <- "_uuid"
-uuid_raww <- "_uuid"
+uuid_cleann <- "uuid"
+uuid_raww <- "uuid"
 uuid_logg <- "uuid"
 uuid_dell <- "uuid"
 
 #names from the cleaning log
-var_logg <- "question.name"
-old_value_logg <- "old.value"
-new_value_logg <- "new.value"
+var_logg <- "Variable"
+old_value_logg <- "Valor antiguo"
+new_value_logg <- "Valor nuevo"
 ```
 
 
@@ -152,8 +154,8 @@ text_oth <- questions %>%
   pull(name)
 
 other_log <- cleann %>% 
-  select(any_of(text_oth), `_uuid`) %>% 
-  pivot_longer(cols = -`_uuid`) %>% 
+  select(any_of(text_oth), !!sym(uuid_cleann)) %>% 
+  pivot_longer(cols = -!!sym(uuid_cleann)) %>% 
   filter(!is.na(value)) %>% 
   mutate(issue_type = "to be recoded") %>% 
   dplyr::rename(variable = name)
@@ -227,7 +229,7 @@ summary_cleanning$check_clean %>% table(useNA = "ifany")
 ```
 
 Cleaning log not applied for `r summary_cleanning %>% filter(check_clean == F) %>% nrow()` entries.  
-It seems to be rounding.
+
 ```{r, warning = F}
 summary_cleanning %>% filter(check_clean == F) %>% 
   select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean) %>%
@@ -235,15 +237,15 @@ summary_cleanning %>% filter(check_clean == F) %>%
 ```
 
 
-Cleaning log ambigious for `r summary_cleanning %>% filter(is.na(check_clean), new.value != "NA") %>% nrow()` entries.  
+Cleaning log ambigious for `r summary_cleanning %>% filter(is.na(check_clean), !!sym(new_value_logg) != "NA") %>% nrow()` entries.  
 ```{r, warning = F}
 summary_cleanning %>% filter(is.na(check_clean), 
-                             new.value != "NA") %>% 
-  group_by(question.name, new.value, value_clean) %>% tally(sort = T) %>% 
+                             !!sym(new_value_logg) != "NA") %>% 
+  group_by(!!sym(var_logg), !!sym(new_value_logg), value_clean) %>% tally(sort = T) %>% 
   knit_big_table()
 
 cleaning_to_check <- summary_cleanning %>% filter(is.na(check_clean), 
-                             new.value != "NA") %>% 
+                             !!sym(new_value_logg) != "NA") %>% 
   select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean) %>%
   mutate(issue = "value from the cleaning log different from the value from the clean data.")
 cleaning_to_check %>% 
@@ -256,13 +258,16 @@ Check anything that is above 5%, if time allows you can check the rest.
 
 This section checks if there are differences between the raw and the clean dataset that has not been reported.  
 
-```{r, warning = F, echo = F}
+```{r, warning = F, echo = F, message = F}
 raw_clean_compare <- compare_datasets(raww, uuid_raww, cleann, uuid_cleann) 
 
 raw_clean_compare$binding <- paste0(raw_clean_compare$uuid, "-/-", raw_clean_compare$question.name)
 
 raw_clean_compare$in_cleaning_log <- raw_clean_compare$binding %in% tolower(logg$binding)
+```
 
+
+```{r, warning = F, echo = F}
 raw_clean_compare$in_cleaning_log %>% table(useNA = "ifany")
 
 ```
@@ -278,6 +283,7 @@ raw_clean_to_check %>% knit_big_table()
 
 ```{r}
 final_log <- list_log %>%
+  map(.f = function(xx){xx %>% mutate(across(.fns = as.character))}) %>%
   do.call(bind_rows, .)
 final_log %>% writexl::write_xlsx("outputs/extra_cleaning_log.xlsx")
 cleaning_check <- list(cleaning_to_check = cleaning_to_check, 
