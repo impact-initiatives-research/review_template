@@ -2,6 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
-inputs/
-outputs/
-.review_report.html
+inputs/**
+outputs/**
+review_report.html
