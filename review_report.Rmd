@@ -1,294 +1,447 @@
 ---
 title: "Review template"
 author: "Yann"
-date: "1/4/2022"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
 output:
   html_document:
     code_folding: hide
+
 ---
+# Data cleaning checks {.tabset}
+version 1.1.0.  
+<br />
+
+This review is separated into two parts *Data checks* and *Cleaning log*:  
+- The first part will performed different check on the dataset, depending on the information available 
+(time, outliers, shortest path, etc.).  
+- The second part will look at how the cleaning was performed. It will first look if the values from the
+cleaning log are correctly changed in the clean data, and then it will look at differences between the 
+raw data and clean data and see if anything was not logged into the cleaning log.  
+<br />
 
 The summary can be found in the output folder.
+
 
 ```{r, message = F, warning = F}
 library(tidyverse)
 library(knitr)
 library(kableExtra)
-library(cleaninginspectoR) #devtools::install_github("impact-initiatives/cleaninginspectoR")
+# library(write_xlsx)
+# library(cleaninginspectoR) #devtools::install_github("impact-initiatives/cleaninginspectoR")
 source("utils/rendering.R")
 source("utils/check_cleaning.R")
+```
 
-raww <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
-                           sheet = "Raw Data_HH", skip = 1)
-cleann <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
-                           sheet = "Clean_HH", skip = 1)
-logg <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
-                           sheet = "Cleaning_log")
-dell <- readxl::read_excel("inputs/REACH_COL_ABA_Pasto_HH_Survey_v2_MGM.xlsx", guess = 10000, 
-                           sheet = "Deletion_log_HH")
 
-questions <- readxl::read_excel("inputs/Formulario.xlsx")
-choices <- readxl::read_excel("inputs/Formulario.xlsx", sheet = 2)
+```{r, message = F, warning = F}
+#The only section that should be changed.
+raww <- readxl::read_excel("inputs/REACH_UKR2008_Dataset Raw non PII HERAIII_NOV2021.xlsx", guess = 10000)
+cleann <- readxl::read_excel("inputs/REACH_UKR2008_Dataset clean HERAIII_NOV2021.xlsx", guess = 50000)
+logg <- readxl::read_excel("inputs/REACH_UKR2008_Data cleaning log HERAIII_DEC2021.xlsx", guess = 50000,
+                           sheet = "VCL")
+dell <- readxl::read_excel("inputs/REACH_UKR2008_Data cleaning log HERAIII_DEC2021.xlsx", guess = 50000,
+                           sheet = "GCL")
 
-uuid_cleann <- "uuid"
-uuid_raww <- "uuid"
+questions <- readxl::read_excel("inputs/REACH_UKR2008_Questionnaire HERAIII_NOV2021.xlsx")
+choices <- readxl::read_excel("inputs/REACH_UKR2008_Questionnaire HERAIII_NOV2021.xlsx", sheet = 2)
+
+uuid_raww <- "_uuid"
+uuid_cleann <- "_uuid"
 uuid_logg <- "uuid"
 uuid_dell <- "uuid"
 
 #names from the cleaning log
-var_logg <- "Variable"
-old_value_logg <- "Valor antiguo"
-new_value_logg <- "Valor nuevo"
+var_logg <- "question.name"
+old_value_logg <- "old.value"
+new_value_logg <- "new.value"
+
+#tests to include  TRUE / FALSE
+check_for_duplicates <- TRUE
+check_for_pii <- TRUE
+check_for_time <- TRUE
+check_for_shortest_path <- TRUE 
+check_for_outliers <- TRUE 
+check_for_logical <- TRUE
+check_for_others <- TRUE
+check_for_deletions <- TRUE
+check_for_etc <- TRUE
+check_for_cleaning_log <- TRUE
+check_for_raw_clean_data <- TRUE
 ```
 
 
 ```{r, message = F, warning = F}
 #create a binding key for the cleaning log
 logg <- logg %>%
-  mutate(binding = paste0(!!sym(uuid_logg), "-/-", !!sym(var_logg))) 
-
-#create the cleanninginspectoR output
-inspector_log <- cleaninginspectoR::inspect_all(cleann, uuid_cleann) 
-
-inspector_log <- inspector_log %>% 
-  filter(!grepl("other", issue_type)) %>%
-  mutate(uuid = cleann[["_uuid"]][index]) 
-
-list_log <- list(inspector_log = inspector_log)
+  mutate(binding = paste0(!!sym(uuid_logg), "-/-", !!sym(var_logg)))
+list_log <- list()
 ```
 
+## 1. Data checks {.tabset}
 
-# 1. Data checks {.tabset}
-
-## Checks for duplicates 
+### Checks for duplicates 
 
 ```{r} 
-if(sum(grepl("duplicate", inspector_log$issue_type)) >0) {
-  inspector_log %>% filter(grepl("duplicate", issue_type))
-  } else {
-    cat("No duplicate")
-  }
-```
+if (check_for_duplicates) {
+  duplicate_log <- cleaninginspectoR::find_duplicates(cleann, uuid_cleann) %>% 
+    mutate(uuid = cleann[[uuid_cleann]][index]) 
+  
+  list_log$duplicate_log <- duplicate_log
+  
+  print_log(duplicate_log, "No duplicates found") 
 
-## Checks for PII
-
-*NOTE*: only looks for the words "GPS, gps, phone, Latitude, Longitude, Phone" in the names of the 
-dataset.
-```{r}
-if(sum(grepl("Potentially sensitive", inspector_log$issue_type)) >0) {
-  inspector_log %>% filter(grepl("Potentially sensitive", issue_type))
-  } else {
-    cat("No PII")
-  }
-
-# use this for alternative 
-# grep("GPS|gps|phone|Latitude|Longitude|Phone", x = names(cleann), value = T, ignore.case = T)
-
+}
 ```
 
 
+### Checks for PII
 
-## check for time
+```{r, warning = F, message = F}
+if (check_for_pii) {
+  pii_log <- cleaninginspectoR::sensitive_columns(cleann)
+  
+  list_log$pii_log <- pii_log
+  
+  print_log(pii_log, "No sensitive columns found") 
+}
+```
+*NOTE*:   
+- Only looks for the words "GPS, gps, phone, Latitude, Longitude, Phone" in the names of the 
+dataset.  
+- It does not check the value in those columns
+
+
+### Check for time
 ```{r, warning = F}
 lower_treshold <- 15
 higher_threshold <- 100
-time_log <- cleaninginspectoR::check_time(cleann, duration_threshold_lower = lower_treshold, 
+
+if (check_for_time) {
+  time_log <- cleaninginspectoR::check_time(cleann, duration_threshold_lower = lower_treshold,
                                           duration_threshold_upper = higher_threshold)
-
-if(nrow(time_log) >0) {
-  time_log
-  } else {
-    cat("No interviews between the thresholds.")
-  }
-
-if(nrow(time_log) > 0) {
+  
   list_log$time_log <- time_log
+  
+  print_log(time_log, "No time sensitive interviews found") 
+
 }
 ```
-Check time for lower threshold as `r lower_treshold` minutes and higher threshold as `r higher_threshold` minutes.
+<br />
+**Note**:  
+- Check time for lower threshold as `r lower_treshold` minutes and higher threshold as `r higher_threshold` minutes.
 
 
-## check for shortest path
+### Check for shortest path
 
 ```{r}
-#take only select and integer to look at NA (removing text, dummies, notes, etc.)
-questions %>% 
-  filter(grepl("select", type) | type == "integer") %>% 
-  pull(name) -> all_for_blanks
-
-check_blanks<- function(data){
-  apply(data, 1,function(x) {length(which(is.na(x)))})/ncol(data)*100
-}
-
-
-cleann$blanks <- cleann %>% select(any_of(all_for_blanks)) %>% check_blanks
-cleann$blanks %>% boxplot()
-
-```
-
-
-## check for outliers
-```{r}
-if(sum(grepl("outlier", inspector_log$issue_type)) >0) {
-  inspector_log %>% filter(grepl("outlier", issue_type)) %>% knit_big_table()
+# take only select and integer to look at NA (removing text, dummies, notes, etc.)
+if (check_for_shortest_path) {
+  if (exists("questions")) {
+    names_for_blanks_check <- questions %>%
+      filter(grepl("select", type) | type == "integer") %>%
+      pull(name)
+    
+    cleann$blanks <- cleann %>% 
+      select(any_of(names_for_blanks_check)) %>% 
+      check_blanks()
+    
   } else {
-    cat("No outliers")
+    cleann$blanks <- cleann %>% 
+      check_blanks()
   }
+  
+  cleann$blanks %>% boxplot()
+}
 ```
+  
 
-## logical check 
+**NOTE**:  
+- This plot shows how many NA the interviews have. You should check values with lots of blanks. As
+there is not a specific threshold, but you should check interviews for high percentage of blanks. 
+*Dataset with the **blank** column is in the output folder.*
 
-
-```{r, warning = F}
-#to be done manually
-
-# list_log$XXX <- XXX
-
-```
-
-
-## Other and translation
+### Check for outliers
 
 ```{r}
-text_oth <- questions %>% 
-  filter(type == "text") %>% 
-  pull(name)
+if (check_for_outliers) {
+  outlier_log <- cleaninginspectoR::find_outliers(cleann) %>% 
+    mutate(uuid = cleann[[uuid_cleann]][index]) 
 
-other_log <- cleann %>% 
-  select(any_of(text_oth), !!sym(uuid_cleann)) %>% 
-  pivot_longer(cols = -!!sym(uuid_cleann)) %>% 
-  filter(!is.na(value)) %>% 
-  mutate(issue_type = "to be recoded") %>% 
-  dplyr::rename(variable = name)
+  list_log$outlier_log <- outlier_log
+  
+  print_log(outlier_log, "No outlier found") 
 
-other_log %>% 
-  arrange(variable, value) %>%
-  knit_big_table()
+}
+```
 
-other_log %>% 
-  group_by(variable) %>% 
-  tally(sort = T) %>%
-  knit_big_table()
 
-other_log %>% 
-  group_by(value) %>% 
-  tally(sort = T) %>%
-  knit_big_table()
 
-if(nrow(other_log) > 0) {
+
+### Logical check 
+
+```{r, warning = F, message = F}
+if (check_for_logical) {
+  #to be done manually
+#######################################################################################################
+#if you have a table with 2 columns : "name" and "check", where "check" is the syntax of the r check  #
+#you can try to un-comment this part                                                                  #
+#######################################################################################################
+  
+# logical_list_check <- readxl::read_excel("inputs/check_list.xlsx")
+# 
+# 
+# 
+# logical_check_table <- logical_list_check %>% 
+#   apply(1, function(xx) {
+#     message(xx[["name"]])
+#     cleann %>% 
+#       mutate(!!sym(xx[["name"]]) := eval(parse(text = xx[["check"]]))) %>% 
+#       pull(!!sym(xx[["name"]]))
+#   }) %>%
+#   as.data.frame() %>% 
+#   `names<-`(logical_list_check$name)
+# 
+# cleann <- cbind(cleann, logical_check_table)
+#  
+# summary_logical_check <- logical_check_table %>%
+#   summarise(across(.fns = sum,na.rm=T)) %>% 
+#   t() %>% 
+#   cbind(logical_list_check,.) %>% 
+#   `names<-`(c("name",  "check", "original", "n")) %>%
+#   arrange(desc(n)) %>%
+#   select(name, original, n, check) 
+# summary_logical_check %>% knit_big_table()
+}
+```
+
+
+
+### Other and translation
+```{r}
+if (check_for_others) {
+  if (exists("questions")) {
+    text_oth <- questions %>%
+      filter(type == "text") %>%
+      pull(name)
+    
+    other_log <- cleann %>%
+        select(any_of(text_oth), !!sym(uuid_cleann)) %>%
+        pivot_longer(cols = -!!sym(uuid_cleann)) %>%
+        filter(!is.na(value)) %>%
+        mutate(issue_type = "to could be recoded") %>%
+        dplyr::rename(variable = name)
+    
+  } else {
+    other_log <- cleaninginspectoR::find_other_responses(cleann) %>% 
+      mutate(uuid = cleann[[uuid_cleann]][index]) 
+  }
   list_log$other_log <- other_log
 }
-
 ```
+<br />
+<br />
+This is all the values from text questions.  
 
-
-## deletions
 ```{r}
-data.frame(n_raw = nrow(raww), 
-           n_clean = nrow(cleann), 
-           n_deleted = nrow(dell),
-           sum_clean_del = nrow(cleann) + nrow(dell)
-           )
-
-cleann_in_dell <- cleann[[uuid_cleann]] %in% dell[[uuid_dell]] %>% sum()
-dell_in_cleann <- dell[[uuid_dell]] %in% cleann[[uuid_cleann]] %>% sum()
-difference_raw_clean_del <-  abs(nrow(raww) - nrow(cleann) - nrow(dell))
-
-
+if (check_for_others) {
+  other_log %>%
+    arrange(variable, value) %>%
+    knit_big_table()
+}
 ```
-Difference between raw, clean and deletion log:  `r difference_raw_clean_del`  
-Number of uuid of clean in deleted : `r cleann_in_dell`  
-Number of uuid of deleted in clean : `r dell_in_cleann`  
+<br /> 
+<br />
+This is how many interviews per text question. 
+
+```{r}
+if (check_for_others) {
+  other_log %>%
+    group_by(variable) %>%
+    tally(sort = T) %>%
+    knit_big_table()
+}
+```
+<br />
+<br />
+The values which are identicals. 
+
+```{r}
+if (check_for_others) {
+  other_log %>%
+    group_by(value) %>%
+    tally(sort = T) %>%
+    knit_big_table()
+}
+```
+
+
+### Deletions
+```{r}
+number_cleann_in_dell <- "Check not performed"
+number_dell_in_cleann <- "Check not performed"
+number_difference_raw_clean_del <- "Check not performed"
+
+if (check_for_deletions) {
+  data.frame(n_raw = nrow(raww), 
+             n_clean = nrow(cleann), 
+             n_deleted = nrow(dell),
+             sum_clean_del = nrow(cleann) + nrow(dell)
+             )
+
+  number_cleann_in_dell <- cleann[[uuid_cleann]] %in% dell[[uuid_dell]] %>% sum()
+  number_dell_in_cleann <- dell[[uuid_dell]] %in% cleann[[uuid_cleann]] %>% sum()
+  number_difference_raw_clean_del <-  abs(nrow(raww) - nrow(cleann) - nrow(dell))
+}
+```
+Difference between raw, clean and deletion log:  `r number_difference_raw_clean_del`  
+Number of uuid of clean in deleted : `r number_cleann_in_dell`  
+Number of uuid of deleted in clean : `r number_dell_in_cleann`  
  
-## Miscelleanous
+### Miscelleanous
 
-# 2. Cleanning log. {.tabset}
+## 2. Cleaning log {.tabset}
 
-## Cleaning log
+### Cleaning log
 
 This section checks if the cleaning log has been applied.  
 
-```{r, warning = F}
-old_new_values <- lapply(FUN = old_new,
-                         X = split(logg, row.names(logg)), 
-                         variable = var_logg,  
-                         data_raw = raww,
-                         data_clean = cleann, 
-                         uuid_raw = uuid_raww,
-                         uuid_clean = uuid_cleann, 
-                         uuid_cleaning_log = uuid_logg 
-                         ) %>% do.call(rbind, .)
-summary_cleanning <- logg %>% 
-  left_join(old_new_values) %>% 
-  mutate(check_raw = !!sym(old_value_logg) == value_raw,  
-         check_clean = !!sym(new_value_logg) == value_clean)
+```{r, warning = F, echo = F}
+cleaning_to_check <- data.frame()
+number_cleaning_wrong <- "Check not performed"
+number_cleaning_ambiugous <- "Check not performed"
+
+if (check_for_cleaning_log) {
+  old_new_values <- lapply(FUN = old_new,
+                           X = split(logg, row.names(logg)), 
+                           variable = var_logg,  
+                           data_raw = raww,
+                           data_clean = cleann, 
+                           uuid_raw = uuid_raww,
+                           uuid_clean = uuid_cleann, 
+                           uuid_cleaning_log = uuid_logg 
+                           ) %>% do.call(rbind, .)
+  summary_cleaning <- logg %>% 
+    left_join(old_new_values) %>% 
+    mutate(check_raw = !!sym(old_value_logg) == value_raw,  
+           check_clean = !!sym(new_value_logg) == value_clean)
+  cleaning_to_check <- summary_cleaning %>% 
+    filter((is.na(check_clean) & !!sym(new_value_logg) != "NA") | check_clean == F)  %>%
+    select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean) %>%
+    mutate(issue = "value from the cleaning log different from the value from the clean data.")
+  
+    number_cleaning_wrong <- summary_cleaning %>% filter(check_clean == F) %>% nrow()
+    number_cleaning_ambiugous <- summary_cleaning %>% filter(is.na(check_clean), !!sym(new_value_logg) != "NA") %>% nrow()
+
+}
+
+
 ```
 
 
 ```{r, warning = F}
-summary_cleanning$check_clean %>% table(useNA = "ifany")
+if (check_for_cleaning_log) {
+  cat("Number of entries in the cleaning log that have the same value in the clean data")
+  summary_cleaning$check_clean %>% table(useNA = "ifany")
+}
 ```
-
-Cleaning log not applied for `r summary_cleanning %>% filter(check_clean == F) %>% nrow()` entries.  
+<br />
+<br />
+**How to read**  
+- `r old_value_logg` refers to your cleaning log old value  
+- `r new_value_logg` refers to your cleaning log new value  
+- value_clean refers to the value in the clean dataset.
+<br />
+Cleaning log not applied for `r number_cleaning_wrong` entries.  
+See below which ones.  
 
 ```{r, warning = F}
-summary_cleanning %>% filter(check_clean == F) %>% 
-  select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean) %>%
-  knit_big_table()
+if (check_for_cleaning_log) {
+  summary_cleaning %>% filter(check_clean == F) %>% 
+    select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean) %>%
+    knit_big_table()
+}
 ```
 
-
-Cleaning log ambigious for `r summary_cleanning %>% filter(is.na(check_clean), !!sym(new_value_logg) != "NA") %>% nrow()` entries.  
+<br />
+<br />
+Cleaning log ambigious for `r number_cleaning_ambiugous` entries.
+You have a value in your cleaning log but it is NA in the dataset.  
+This is a summary per question and per value. (feel free to ignore the obvious ones such as 999, deletion)
 ```{r, warning = F}
-summary_cleanning %>% filter(is.na(check_clean), 
-                             !!sym(new_value_logg) != "NA") %>% 
-  group_by(!!sym(var_logg), !!sym(new_value_logg), value_clean) %>% tally(sort = T) %>% 
-  knit_big_table()
+if (check_for_cleaning_log) {
+  summary_cleaning %>% filter(is.na(check_clean), 
+                               !!sym(new_value_logg) != "NA") %>% 
+    group_by(!!sym(var_logg), !!sym(new_value_logg), value_clean) %>% tally(sort = T) %>% 
+    knit_big_table()
+}
+```
+<br />    
+<br />
+And the details here.  
 
-cleaning_to_check <- summary_cleanning %>% filter(is.na(check_clean), 
-                             !!sym(new_value_logg) != "NA") %>% 
-  select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean) %>%
-  mutate(issue = "value from the cleaning log different from the value from the clean data.")
-cleaning_to_check %>% 
-  knit_big_table()
+```{r, warning = F}
+if (check_for_cleaning_log) {
+  cleaning_to_check_na <- summary_cleaning %>% filter(is.na(check_clean), 
+                               !!sym(new_value_logg) != "NA") %>% 
+    select(all_of(c(uuid_logg, var_logg, old_value_logg, new_value_logg)), value_clean)
+  cleaning_to_check_na %>% 
+    knit_big_table()
+}
 ```
 
-Check anything that is above 5%, if time allows you can check the rest.  
 
-## Raw and Clean
+### Raw and Clean
 
 This section checks if there are differences between the raw and the clean dataset that has not been reported.  
 
 ```{r, warning = F, echo = F, message = F}
-raw_clean_compare <- compare_datasets(raww, uuid_raww, cleann, uuid_cleann) 
+raw_clean_to_check <- data.frame()
+number_difference_raw_clean <- "Check not performed"
 
-raw_clean_compare$binding <- paste0(raw_clean_compare$uuid, "-/-", raw_clean_compare$question.name)
 
-raw_clean_compare$in_cleaning_log <- raw_clean_compare$binding %in% tolower(logg$binding)
+if (check_for_raw_clean_data) {
+  raw_clean_compare <- compare_datasets(raww, uuid_raww, cleann, uuid_cleann) 
+
+  raw_clean_compare$binding <- paste0(raw_clean_compare$uuid, "-/-", raw_clean_compare$question.name)
+  
+  raw_clean_compare$in_cleaning_log <- raw_clean_compare$binding %in% tolower(logg$binding)
+}
 ```
 
 
 ```{r, warning = F, echo = F}
-raw_clean_compare$in_cleaning_log %>% table(useNA = "ifany")
-
+if (check_for_raw_clean_data) {
+  number_diffrence_raw_clean <- sum(!raw_clean_compare$in_cleaning_log)
+  cat("Number of differences between raw data and clean data that seems not be in the cleaning log")
+  raw_clean_compare$in_cleaning_log %>% table(useNA = "ifany")
+}
 ```
-These have changed and does not appear in the cleaning log.
-
+<br />
+There are `r number_difference_raw_clean` changes not in the cleaning log.  
+These have changed and does not appear in the cleaning log.  
 ```{r}
-raw_clean_to_check <- raw_clean_compare %>% 
-  filter(comments == "change was made", in_cleaning_log == F) %>%
-  mutate(issue = "value are different from the raw and clean and does not appear in the cleaning log")
-
-raw_clean_to_check %>% knit_big_table()
+if (check_for_raw_clean_data) {
+  raw_clean_to_check <- raw_clean_compare %>% 
+    filter(comments == "change was made", in_cleaning_log == F) %>%
+    mutate(issue = "value are different from the raw and clean and does not appear in the cleaning log") %>% 
+    select(- comments)
+  
+  raw_clean_to_check %>% knit_big_table()
+}
 ```
 
 ```{r}
 final_log <- list_log %>%
   map(.f = function(xx){xx %>% mutate(across(.fns = as.character))}) %>%
   do.call(bind_rows, .)
-final_log %>% writexl::write_xlsx("outputs/extra_cleaning_log.xlsx")
+
+final_log %>% writexl::write_xlsx("outputs/review_cleaning_log_part1.xlsx")
+
 cleaning_check <- list(cleaning_to_check = cleaning_to_check, 
                        raw_clean_to_check = raw_clean_to_check)
-cleaning_check %>% writexl::write_xlsx("outputs/checks_cleaning.xlsx")
 
+cleaning_check %>% writexl::write_xlsx("outputs/review_cleaning_part2.xlsx")
+
+cleann %>%writexl::write_xlsx("outputs/dataset_with_check.xlsx")
 ```
 

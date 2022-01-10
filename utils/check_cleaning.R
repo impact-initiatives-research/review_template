@@ -1,3 +1,8 @@
+#check blanks
+check_blanks<- function(data){
+  apply(data, 1,function(x) {length(which(is.na(x)))})/ncol(data)*100
+}
+
 #compare the cleaning log and the raw dataset
 old_new <- function(data_raw, 
                     data_clean, 
