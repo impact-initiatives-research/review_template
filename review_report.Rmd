@@ -35,15 +35,13 @@ source("utils/check_cleaning.R")
 
 ```{r, message = F, warning = F}
 #The only section that should be changed.
-raww <- readxl::read_excel("inputs/REACH_UKR2008_Dataset Raw non PII HERAIII_NOV2021.xlsx", guess = 10000)
-cleann <- readxl::read_excel("inputs/REACH_UKR2008_Dataset clean HERAIII_NOV2021.xlsx", guess = 50000)
-logg <- readxl::read_excel("inputs/REACH_UKR2008_Data cleaning log HERAIII_DEC2021.xlsx", guess = 50000,
-                           sheet = "VCL")
-dell <- readxl::read_excel("inputs/REACH_UKR2008_Data cleaning log HERAIII_DEC2021.xlsx", guess = 50000,
-                           sheet = "GCL")
+raww <- readxl::read_excel("inputs/UGA2109_Cross_Sectoral_Child_Protection_Assessment_Caregiver_Data.xlsx", guess = 10000)
+cleann <- readxl::read_excel("inputs/clean_data_caregiver.xlsx", guess = 50000)
+logg <- read.csv("master_log_caregiver.csv")
+dell <- read.csv("deletion_log_caregiver.csv")
 
-questions <- readxl::read_excel("inputs/REACH_UKR2008_Questionnaire HERAIII_NOV2021.xlsx")
-choices <- readxl::read_excel("inputs/REACH_UKR2008_Questionnaire HERAIII_NOV2021.xlsx", sheet = 2)
+questions <- readxl::read_excel("inputs/Child_Protection_Assessment_Caregiver_Tool.xlsx")
+choices <- readxl::read_excel("inputs/Child_Protection_Assessment_Caregiver_Tool.xlsx", sheet = 2)
 
 uuid_raww <- "_uuid"
 uuid_cleann <- "_uuid"
@@ -233,7 +231,7 @@ if (check_for_others) {
     
   } else {
     other_log <- cleaninginspectoR::find_other_responses(cleann) %>% 
-      mutate(uuid = cleann[[uuid_cleann]][index]) 
+      mutate(uuid = "functions per uuid will work with kobo at the moment") 
   }
   list_log$other_log <- other_log
 }
@@ -319,7 +317,9 @@ if (check_for_cleaning_log) {
                            uuid_raw = uuid_raww,
                            uuid_clean = uuid_cleann, 
                            uuid_cleaning_log = uuid_logg 
-                           ) %>% do.call(rbind, .)
+                           ) %>%
+    map(.f = function(xx){xx %>% mutate(across(.fns = as.character))}) %>%
+    do.call(rbind, .)
   summary_cleaning <- logg %>% 
     left_join(old_new_values) %>% 
     mutate(check_raw = !!sym(old_value_logg) == value_raw,  
